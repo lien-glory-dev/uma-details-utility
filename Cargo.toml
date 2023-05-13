@@ -3,10 +3,17 @@ name = "uma-details-utility"
 version = "0.1.0"
 edition = "2021"
 authors = ["tankream <shuto.tanaka.kos@gmail.com>"]
+description = "A utility for Umamusume screen captures"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+chrono = "0.4"
 anyhow = "1.0"
 thiserror = "1"
 opencv = "0.78"
+
+[profile.release]
+lto = true
+panic = 'abort'
+codegen-units = 1
