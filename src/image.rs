@@ -82,26 +82,22 @@ pub trait SizeIdentifiableImage: ImageMatrix {
     fn width(&self) -> i32;
     fn height(&self) -> i32;
 
-    fn vertical_crop_image(
-        &self,
-        crop_y: CropY,
-        crop_height: CropHeight,
-    ) -> Result<opencv::core::Mat> {
+    fn vertical_crop_image(&self, crop_y: CropY, crop_height: CropHeight) -> Result<SimpleImage> {
         let cropping_rect = Rect::new(0, crop_y.0, self.width(), crop_height.0);
         let cropped_image = opencv::core::Mat::roi(&self.convert_to_mat()?, cropping_rect.into())?;
 
-        Ok(cropped_image)
+        Ok(SimpleImage(cropped_image))
     }
-    
-    fn horizontal_crop_image(&self, crop_x: CropX, crop_width: CropWidth) -> Result<opencv::core::Mat> {
+
+    fn horizontal_crop_image(&self, crop_x: CropX, crop_width: CropWidth) -> Result<SimpleImage> {
         let cropping_rect = Rect::new(crop_x.0, 0, crop_width.0, self.height());
         let cropped_image = opencv::core::Mat::roi(&self.convert_to_mat()?, cropping_rect.into())?;
-        
-        Ok(cropped_image)
+
+        Ok(SimpleImage(cropped_image))
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SimpleImage(opencv::core::Mat);
 
 impl SimpleImage {

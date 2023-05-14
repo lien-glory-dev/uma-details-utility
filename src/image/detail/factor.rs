@@ -1,4 +1,4 @@
-use opencv::core::{min_max_loc, vconcat2, Mat, MatTraitConst};
+use opencv::core::{min_max_loc, Mat, MatTraitConst};
 use opencv::imgproc;
 
 use crate::image::detail::{HorseGirlDetailImage, HorseGirlFullDetailImage};
@@ -40,13 +40,13 @@ impl FactorListPartialImage {
     }
 
     pub fn merge_below(&mut self, other: &Self) -> Result<()> {
-        self.image_mat = self.get_merged_below(other)?;
-        self.factor_list_area.height = self.image_mat.rows();
+        self.image_mat = self.get_merged_below(other)?.0;
+        self.factor_list_area.height = self.height();
 
         Ok(())
     }
 
-    pub fn get_merged_below(&self, other: &Self) -> Result<Mat> {
+    pub fn get_merged_below(&self, other: &Self) -> Result<SimpleImage> {
         let MatchedPoint(self_image_matching, other_image_matching) =
             self.detect_match_area(other)?;
 
@@ -57,8 +57,7 @@ impl FactorListPartialImage {
             CropHeight(other.image_mat.rows() - other_image_matching),
         )?;
 
-        let mut merged_image = Mat::default();
-        vconcat2(&trimmed_self_image, &trimmed_other_image, &mut merged_image)?;
+        let mut merged_image = trimmed_self_image.get_merged_below(&trimmed_other_image)?;
 
         Ok(merged_image)
     }
@@ -68,7 +67,7 @@ impl FactorListPartialImage {
 
         Ok(roi)
     }
-    
+
     fn detect_match_area(&self, other: &FactorListPartialImage) -> Result<MatchedPoint> {
         let self_matching_roi = self.get_matching_roi()?;
         let other_matching_roi = other.get_matching_roi()?;
@@ -86,8 +85,8 @@ impl FactorListPartialImage {
 
                 let mut match_result = Mat::default();
                 imgproc::match_template(
-                    &self_scanning_roi,
-                    &other_scanning_roi,
+                    &self_scanning_roi.0,
+                    &other_scanning_roi.0,
                     &mut match_result,
                     imgproc::TM_CCOEFF_NORMED,
                     &Mat::default(),

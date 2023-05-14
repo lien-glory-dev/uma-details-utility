@@ -1,30 +1,38 @@
-use opencv::core::{absdiff, in_range, Mat, MatTraitConst, Point, Range, Rect as cvRect, Scalar, Vector};
+use opencv::core::{
+    absdiff, in_range, Mat, MatTraitConst, MatTraitConstManual, Point, Rect as cvRect, Scalar,
+};
 use opencv::imgcodecs::{imread, IMREAD_COLOR};
 use opencv::imgproc;
-use opencv::types::{VectorOfi32, VectorOfVectorOfPoint};
+use opencv::types::VectorOfVectorOfPoint;
 
 use factor::FactorListPartialImage;
 use footer::FooterImage;
 use status::StatusImage;
 
 use crate::image::detail::factor::FactorListImage;
-use crate::image::{Error, Result, SimpleImage, SizeIdentifiableImage};
+use crate::image::{CropHeight, CropWidth, CropX, CropY, Error, Result, SizeIdentifiableImage};
 use crate::image::{ImageMatrix, Rect};
 
 pub mod factor;
 pub mod footer;
 pub mod status;
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum HeaderTrimMode {
+    TrimMarginOnly,
+    TrimTitleBar,
+}
+
 #[derive(Debug, Copy, Clone)]
 pub struct ImageConfig {
-    pub do_trim_margin: bool,
+    pub header_trim_mode: Option<HeaderTrimMode>,
     pub do_merge_close_button: bool,
 }
 
 impl Default for ImageConfig {
     fn default() -> Self {
         Self {
-            do_trim_margin: false,
+            header_trim_mode: Default::default(),
             do_merge_close_button: true,
         }
     }
@@ -37,6 +45,10 @@ pub struct HorseGirlDetailImage {
 }
 
 impl HorseGirlDetailImage {
+    const BINARY_BRIGHTNESS_THRESHOLD: u8 = 127;
+    const BINARY_BLACK: u8 = 0;
+    const BINARY_WHITE: u8 = 255;
+
     pub fn from_path(path: &str) -> Result<Self> {
         let inner = imread(path, IMREAD_COLOR)
             .map_err(|e| Error::LoadImageFromFileError {
@@ -66,26 +78,186 @@ impl HorseGirlDetailImage {
                     .to_string(),
             })
     }
-    
+
     pub fn get_left_right_margin(&self) -> Result<i32> {
-        let mut grayscale_image = Mat::default();
+        let factor_list_area = self.get_factor_list_area()?;
+
+        let mut hsv_image = Mat::default();
         imgproc::cvt_color(
             &self.image_mat,
-            &mut grayscale_image,
+            &mut hsv_image,
             imgproc::COLOR_BGR2HSV,
             self.image_mat.channels(),
         )?;
-        
+
         let mut binary_image = Mat::default();
         in_range(
-            &grayscale_image,
+            &hsv_image,
             &Scalar::all(0.0),
             &Scalar::new(250.0, 140.0, 240.0, 255.0),
             &mut binary_image,
         )?;
-        
-        SimpleImage::new(binary_image).write_to_file("debug-images", "diff_threshold.png")?;
-        panic!();
+
+        let binary_image = Mat::roi(
+            &binary_image,
+            cvRect::new(
+                0,
+                factor_list_area.y,
+                factor_list_area.x,
+                factor_list_area.height,
+            ),
+        )?;
+
+        let margin_end_points: Vec<usize> = (0..binary_image.rows())
+            .filter_map(|y| {
+                let rows = binary_image.row(y).ok()?;
+                let rows = rows.data_bytes().ok()?;
+
+                Self::get_position_black_after_white(rows)
+            })
+            .collect();
+
+        if margin_end_points.is_empty() {
+            return Err(Error::ImageNotMatched);
+        }
+
+        let margin_end_point = margin_end_points.iter().sum::<usize>() / margin_end_points.len();
+
+        Ok(margin_end_point as i32)
+    }
+
+    pub fn get_top_margin(&self, include_title_bar: bool) -> Result<i32> {
+        let factor_list_area = self.get_factor_list_area()?;
+
+        let mut hsv_image = Mat::default();
+        imgproc::cvt_color(
+            &self.image_mat,
+            &mut hsv_image,
+            imgproc::COLOR_BGR2HSV,
+            self.image_mat.channels(),
+        )?;
+
+        let mut binary_image = Mat::default();
+        in_range(
+            &hsv_image,
+            &Scalar::new(30.0, 210.0, 160.0, 255.0),
+            &Scalar::new(58.0, 255.0, 255.0, 255.0),
+            &mut binary_image,
+        )?;
+
+        let binary_image = Mat::roi(
+            &binary_image,
+            cvRect::new(
+                factor_list_area.x,
+                0,
+                factor_list_area.width,
+                binary_image.rows() / 2,
+            ),
+        )?;
+
+        let mut margin_end_points: Vec<usize> = (0..binary_image.cols())
+            .filter_map(|x| {
+                let cols = binary_image.col(x).ok()?;
+                let cols: Vec<u8> = cols.iter::<u8>().ok()?.map(|(_, bin)| bin).collect();
+                let cols = cols.as_slice();
+
+                if include_title_bar {
+                    Self::get_position_black_after_white(cols)
+                } else {
+                    Self::get_position_white_after_black(cols)
+                }
+            })
+            .collect();
+
+        if margin_end_points.is_empty() {
+            return Err(Error::ImageNotMatched);
+        }
+
+        margin_end_points.sort();
+        let margin_end_points = margin_end_points.split_at(margin_end_points.len() / 2).1;
+
+        let margin_end_point =
+            (margin_end_points.iter().sum::<usize>() / margin_end_points.len()) as i32;
+
+        Ok(margin_end_point)
+    }
+
+    pub fn get_bottom_margin(&self) -> Result<i32> {
+        let factor_list_area = self.get_factor_list_area()?;
+
+        let mut hsv_image = Mat::default();
+        imgproc::cvt_color(
+            &self.image_mat,
+            &mut hsv_image,
+            imgproc::COLOR_BGR2HSV,
+            self.image_mat.channels(),
+        )?;
+
+        let mut binary_image = Mat::default();
+        in_range(
+            &hsv_image,
+            &Scalar::new(0.0, 0.0, 249.0, 255.0),
+            &Scalar::new(0.0, 0.0, 249.5, 255.0),
+            &mut binary_image,
+        )?;
+
+        let factor_list_area_end_y = factor_list_area.y + factor_list_area.height;
+        let binary_image = Mat::roi(
+            &binary_image,
+            cvRect::new(
+                factor_list_area.x,
+                factor_list_area_end_y,
+                factor_list_area.width,
+                binary_image.rows() - factor_list_area_end_y,
+            ),
+        )?;
+
+        let mut margin_end_points: Vec<usize> = (0..binary_image.cols())
+            .filter_map(|x| {
+                let cols = binary_image.col(x).ok()?;
+                let mut cols: Vec<u8> = cols.iter::<u8>().ok()?.map(|(_, bin)| bin).collect();
+                cols.reverse();
+                let cols = cols.as_slice();
+
+                Self::get_position_white_after_black(cols)
+            })
+            .collect();
+
+        if margin_end_points.is_empty() {
+            return Err(Error::ImageNotMatched);
+        }
+
+        margin_end_points.sort();
+        let margin_end_points = margin_end_points.split_at(margin_end_points.len() / 2).1;
+
+        let margin_end_point =
+            (margin_end_points.iter().sum::<usize>() / margin_end_points.len()) as i32;
+
+        Ok(margin_end_point)
+    }
+
+    fn get_position_white_after_black(pixels: &[u8]) -> Option<usize> {
+        let mut is_reached_black = false;
+        pixels.iter().position(|pixel_brightness| {
+            if !is_reached_black && *pixel_brightness < Self::BINARY_BRIGHTNESS_THRESHOLD {
+                is_reached_black = true;
+            }
+
+            is_reached_black && *pixel_brightness >= Self::BINARY_BRIGHTNESS_THRESHOLD
+        })
+    }
+
+    fn get_position_black_after_white(pixels: &[u8]) -> Option<usize> {
+        let mut is_reached_white = false;
+        let result = pixels.iter().position(|pixel_brightness| {
+            if !is_reached_white && *pixel_brightness > Self::BINARY_BRIGHTNESS_THRESHOLD {
+                is_reached_white = true;
+            }
+
+            is_reached_white && *pixel_brightness <= Self::BINARY_BRIGHTNESS_THRESHOLD
+        });
+
+        result
     }
 
     pub fn get_status_image(&self) -> Result<StatusImage> {
@@ -197,6 +369,10 @@ impl HorseGirlFullDetailImage {
         Ok(new)
     }
 
+    pub fn set_config(&mut self, config: ImageConfig) {
+        self.config = config;
+    }
+
     pub fn calc_children_list_area(&mut self) -> Result<Rect> {
         let list_area_rect = self.get_list_area_rect()?;
 
@@ -206,19 +382,27 @@ impl HorseGirlFullDetailImage {
 
         Ok(list_area_rect)
     }
-    
+
     pub fn get_left_right_margin(&self) -> Result<i32> {
         self.images[0].get_left_right_margin()
     }
-    
+
+    pub fn get_top_margin(&self, include_title_bar: bool) -> Result<i32> {
+        self.images[0].get_top_margin(include_title_bar)
+    }
+
+    pub fn get_bottom_margin(&self) -> Result<i32> {
+        self.images[0].get_bottom_margin()
+    }
+
     pub fn get_status_image(&self) -> Result<StatusImage> {
         self.images[0].get_status_image()
     }
-    
+
     pub fn get_factor_list_image(&self) -> Result<FactorListImage> {
         FactorListImage::from_detail(self)
     }
-    
+
     pub fn get_footer_image(&self) -> Result<FooterImage> {
         self.images[0].get_footer_image()
     }
@@ -286,6 +470,22 @@ impl ImageMatrix for HorseGirlFullDetailImage {
         if self.config.do_merge_close_button {
             let footer_image = self.get_footer_image()?;
             merged_image = merged_image.get_merged_below(&footer_image)?;
+        }
+
+        if let Some(trim_mode) = self.config.header_trim_mode {
+            let margin_left_right = self.get_left_right_margin()?;
+            let margin_top = self.get_top_margin(trim_mode == HeaderTrimMode::TrimTitleBar)?;
+            let margin_bottom = self.get_bottom_margin()?;
+            let crop_width = CropWidth(merged_image.width() - margin_left_right * 2);
+            let crop_height = if self.config.do_merge_close_button {
+                CropHeight(merged_image.height() - (margin_top + margin_bottom))
+            } else {
+                CropHeight(merged_image.height() - margin_top)
+            };
+
+            merged_image =
+                merged_image.horizontal_crop_image(CropX(margin_left_right), crop_width)?;
+            merged_image = merged_image.vertical_crop_image(CropY(margin_top), crop_height)?;
         }
 
         merged_image.convert_to_mat()
