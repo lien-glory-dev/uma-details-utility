@@ -1,7 +1,7 @@
 use std::fmt::Debug;
 use std::fs;
 
-use opencv::core::MatTraitConst;
+use opencv::core::{Mat, MatTraitConst, MatTraitConstManual};
 use thiserror::Error;
 
 pub mod detail;
@@ -29,6 +29,12 @@ pub enum Error {
         source: opencv::Error,
     },
 
+    #[error("image error: {source}")]
+    ImageError {
+        #[from]
+        source: image::ImageError,
+    },
+
     #[error("File I/O error: {source}")]
     FileIoError {
         #[from]
@@ -51,7 +57,7 @@ pub struct CropY(i32);
 pub struct CropHeight(i32);
 
 pub trait ImageMatrix: Debug {
-    fn convert_to_mat(&self) -> Result<opencv::core::Mat>;
+    fn convert_to_mat(&self) -> Result<Mat>;
 
     fn write_to_file(&self, dir_path: &str, name: &str) -> Result<String> {
         fs::create_dir_all(dir_path)?;
@@ -66,8 +72,27 @@ pub trait ImageMatrix: Debug {
         Ok(file_path)
     }
 
+    fn convert_to_image(&self) -> Result<image::DynamicImage> {
+        let mat = self.convert_to_mat()?;
+
+        let mut rgb_image = image::RgbImage::new(mat.cols() as u32, mat.rows() as u32);
+        let data = mat.data_bytes()?;
+        let w = rgb_image.width();
+        for (pixi, i) in (0..data.len()).step_by(3).enumerate() {
+            let b = data[i];
+            let g = data[i + 1];
+            let r = data[i + 2];
+            let pixel = image::Rgb([r, g, b]);
+            let x = pixi as u32 % w;
+            let y = pixi as u32 / w;
+            rgb_image.put_pixel(x, y, pixel);
+        }
+        let im = image::DynamicImage::ImageRgb8(rgb_image);
+        Ok(im)
+    }
+
     fn get_merged_below(&self, other: &dyn ImageMatrix) -> Result<SimpleImage> {
-        let mut merged_image = opencv::core::Mat::default();
+        let mut merged_image = Mat::default();
         opencv::core::vconcat2(
             &self.convert_to_mat()?,
             &other.convert_to_mat()?,
@@ -84,30 +109,30 @@ pub trait SizeIdentifiableImage: ImageMatrix {
 
     fn vertical_crop_image(&self, crop_y: CropY, crop_height: CropHeight) -> Result<SimpleImage> {
         let cropping_rect = Rect::new(0, crop_y.0, self.width(), crop_height.0);
-        let cropped_image = opencv::core::Mat::roi(&self.convert_to_mat()?, cropping_rect.into())?;
+        let cropped_image = Mat::roi(&self.convert_to_mat()?, cropping_rect.into())?;
 
         Ok(SimpleImage(cropped_image))
     }
 
     fn horizontal_crop_image(&self, crop_x: CropX, crop_width: CropWidth) -> Result<SimpleImage> {
         let cropping_rect = Rect::new(crop_x.0, 0, crop_width.0, self.height());
-        let cropped_image = opencv::core::Mat::roi(&self.convert_to_mat()?, cropping_rect.into())?;
+        let cropped_image = Mat::roi(&self.convert_to_mat()?, cropping_rect.into())?;
 
         Ok(SimpleImage(cropped_image))
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct SimpleImage(opencv::core::Mat);
+pub struct SimpleImage(Mat);
 
 impl SimpleImage {
-    pub fn new(mat: opencv::core::Mat) -> Self {
+    pub fn new(mat: Mat) -> Self {
         Self(mat)
     }
 }
 
 impl ImageMatrix for SimpleImage {
-    fn convert_to_mat(&self) -> Result<opencv::core::Mat> {
+    fn convert_to_mat(&self) -> Result<Mat> {
         Ok(self.0.clone())
     }
 }

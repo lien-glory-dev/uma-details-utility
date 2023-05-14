@@ -1,9 +1,9 @@
 use opencv::core::{
     absdiff, in_range, Mat, MatTraitConst, MatTraitConstManual, Point, Rect as cvRect, Scalar,
 };
-use opencv::imgcodecs::{imread, IMREAD_COLOR};
+use opencv::imgcodecs::{imdecode, imread, IMREAD_COLOR};
 use opencv::imgproc;
-use opencv::types::VectorOfVectorOfPoint;
+use opencv::types::{VectorOfVectorOfPoint, VectorOfu8};
 
 use factor::FactorListPartialImage;
 use footer::FooterImage;
@@ -46,8 +46,6 @@ pub struct HorseGirlDetailImage {
 
 impl HorseGirlDetailImage {
     const BINARY_BRIGHTNESS_THRESHOLD: u8 = 127;
-    const BINARY_BLACK: u8 = 0;
-    const BINARY_WHITE: u8 = 255;
 
     pub fn from_path(path: &str) -> Result<Self> {
         let inner = imread(path, IMREAD_COLOR)
@@ -64,6 +62,16 @@ impl HorseGirlDetailImage {
                     Ok(i)
                 }
             })?;
+
+        Ok(Self {
+            image_mat: inner,
+            factor_list_area: Default::default(),
+        })
+    }
+
+    pub fn from_image(image: image::DynamicImage) -> Result<Self> {
+        let image = image.into_bytes();
+        let inner = imdecode(&VectorOfu8::from_iter(image), IMREAD_COLOR)?;
 
         Ok(Self {
             image_mat: inner,

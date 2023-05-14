@@ -63,6 +63,5 @@ fn main() -> anyhow::Result<()> {
         detail.write_to_file(DIR_PATH, "result_title_trimmed_without_close_button.png")?
     );
     
-    
     Ok(())
 }

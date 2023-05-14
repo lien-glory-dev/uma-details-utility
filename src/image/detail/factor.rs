@@ -57,7 +57,7 @@ impl FactorListPartialImage {
             CropHeight(other.image_mat.rows() - other_image_matching),
         )?;
 
-        let mut merged_image = trimmed_self_image.get_merged_below(&trimmed_other_image)?;
+        let merged_image = trimmed_self_image.get_merged_below(&trimmed_other_image)?;
 
         Ok(merged_image)
     }
