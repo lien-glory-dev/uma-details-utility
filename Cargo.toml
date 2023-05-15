@@ -11,7 +11,7 @@ description = "A utility for Umamusume screen captures"
 chrono = "0.4"
 anyhow = "1.0"
 thiserror = "1"
-opencv = "0.78"
+opencv = "0.81"
 image = "0.24"
 
 [profile.release]
