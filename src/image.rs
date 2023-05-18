@@ -106,6 +106,10 @@ pub trait ImageMatrix: Debug {
 pub trait SizeIdentifiableImage: ImageMatrix {
     fn width(&self) -> i32;
     fn height(&self) -> i32;
+    
+    fn pixels_count(&self) -> i32 {
+        self.width() * self.height()
+    }
 
     fn vertical_crop_image(&self, crop_y: CropY, crop_height: CropHeight) -> Result<SimpleImage> {
         let cropping_rect = Rect::new(0, crop_y.0, self.width(), crop_height.0);

@@ -1,5 +1,6 @@
 use opencv::core::{
-    absdiff, in_range, Mat, MatTraitConst, MatTraitConstManual, Point, Rect as cvRect, Scalar,
+    absdiff, in_range, Mat, MatTrait, MatTraitConst, MatTraitConstManual, Point, Rect as cvRect,
+    Scalar, Size,
 };
 use opencv::imgcodecs::{imdecode, imread, IMREAD_COLOR};
 use opencv::imgproc;
@@ -27,6 +28,7 @@ pub enum HeaderTrimMode {
 pub struct ImageConfig {
     pub header_trim_mode: Option<HeaderTrimMode>,
     pub do_merge_close_button: bool,
+    pub scaling_threshold_pixels: Option<i32>,
 }
 
 impl Default for ImageConfig {
@@ -34,6 +36,7 @@ impl Default for ImageConfig {
         Self {
             header_trim_mode: Default::default(),
             do_merge_close_button: true,
+            scaling_threshold_pixels: None,
         }
     }
 }
@@ -77,6 +80,22 @@ impl HorseGirlDetailImage {
             image_mat: inner,
             factor_list_area: Default::default(),
         })
+    }
+
+    pub fn scale_image(&mut self, ratio: f64) -> Result<()> {
+        let mut scaled_mat = Mat::default();
+        imgproc::resize(
+            &self.image_mat,
+            &mut scaled_mat,
+            Size::default(),
+            ratio,
+            ratio,
+            imgproc::INTER_AREA,
+        )?;
+
+        self.image_mat = scaled_mat;
+
+        Ok(())
     }
 
     pub fn get_factor_list_area(&self) -> Result<Rect> {
@@ -363,8 +382,21 @@ impl HorseGirlFullDetailImage {
             if let Err(Error::FileNotFound { .. }) = image {
                 break;
             }
+            let mut image = image?;
 
-            images.push(image?);
+            config.scaling_threshold_pixels.map(|p| {
+                let image_pixels_count = image.pixels_count();
+                println!("threshold: {}, pixels: {}", p, image_pixels_count);
+                if image_pixels_count < p {
+                    return Ok(());
+                }
+                let scale = (p as f64 / image_pixels_count as f64).sqrt();
+                println!("scale: {:.3}", scale);
+
+                image.scale_image(scale)
+            });
+
+            images.push(image);
         }
 
         if images.len() < 2 {
