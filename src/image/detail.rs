@@ -386,13 +386,11 @@ impl HorseGirlFullDetailImage {
 
             config.scaling_threshold_pixels.map(|p| {
                 let image_pixels_count = image.pixels_count();
-                println!("threshold: {}, pixels: {}", p, image_pixels_count);
                 if image_pixels_count < p {
                     return Ok(());
                 }
                 let scale = (p as f64 / image_pixels_count as f64).sqrt();
-                println!("scale: {:.3}", scale);
-
+                
                 image.scale_image(scale)
             });
 
