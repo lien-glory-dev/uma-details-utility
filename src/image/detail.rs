@@ -268,8 +268,8 @@ impl HorseGirlDetailImage {
         let mut binary_image = Mat::default();
         in_range(
             &hsv_image,
-            &Scalar::new(0.0, 0.0, 245.0, 255.0),
-            &Scalar::new(0.0, 0.0, 255.0, 255.0),
+            &Scalar::new(0.0, 0.0, 253.2, 255.0),
+            &Scalar::new(5.0, 20.0, 255.0, 255.0),
             &mut binary_image,
         )?;
 
