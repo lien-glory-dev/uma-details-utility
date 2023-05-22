@@ -7,14 +7,13 @@ description = "A utility for Umamusume screen captures"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[features]
+default = []
+image_debug = []
+
 [dependencies]
 chrono = "0.4"
 anyhow = "1.0"
 thiserror = "1"
 opencv = "0.81"
 image = "0.24"
-
-[profile.release]
-lto = true
-panic = 'abort'
-codegen-units = 1

@@ -1,6 +1,5 @@
 use opencv::core::{
-    absdiff, in_range, Mat, MatTrait, MatTraitConst, MatTraitConstManual, Point, Rect as cvRect,
-    Scalar, Size,
+    absdiff, in_range, Mat, MatTraitConst, MatTraitConstManual, Point, Rect as cvRect, Scalar, Size,
 };
 use opencv::imgcodecs::{imdecode, imread, IMREAD_COLOR};
 use opencv::imgproc;
@@ -11,6 +10,8 @@ use footer::FooterImage;
 use status::StatusImage;
 
 use crate::image::detail::factor::FactorListImage;
+#[cfg(feature = "image_debug")]
+use crate::image::SimpleImage;
 use crate::image::{CropHeight, CropWidth, CropX, CropY, Error, Result, SizeIdentifiableImage};
 use crate::image::{ImageMatrix, Rect};
 
@@ -90,10 +91,18 @@ impl HorseGirlDetailImage {
             Size::default(),
             ratio,
             ratio,
-            imgproc::INTER_AREA,
+            imgproc::INTER_LANCZOS4,
         )?;
 
         self.image_mat = scaled_mat;
+        if let Some(r) = self.factor_list_area.as_mut() {
+            *r = Rect {
+                x: (r.x as f64 * ratio) as i32,
+                y: (r.y as f64 * ratio) as i32,
+                width: (r.width as f64 * ratio) as i32,
+                height: (r.height as f64 * ratio) as i32,
+            };
+        }
 
         Ok(())
     }
@@ -148,9 +157,30 @@ impl HorseGirlDetailImage {
             return Err(Error::ImageNotMatched);
         }
 
-        let margin_end_point = margin_end_points.iter().sum::<usize>() / margin_end_points.len();
+        let margin_end_point = *margin_end_points
+            .iter()
+            .max()
+            .ok_or(Error::ImageNotMatched)? as i32;
 
-        Ok(margin_end_point as i32)
+        #[cfg(feature = "image_debug")]
+        {
+            let mut debug = self.image_mat.clone();
+            imgproc::line(
+                &mut debug,
+                Point::new(margin_end_point, factor_list_area.y),
+                Point::new(
+                    margin_end_point,
+                    factor_list_area.y + factor_list_area.height,
+                ),
+                Scalar::new(0.0, 0.0, 255.0, 255.0),
+                2,
+                imgproc::LINE_8,
+                0,
+            )?;
+            SimpleImage(debug).write_to_file("debug-images", "left-margin-end-point.png")?;
+        }
+
+        Ok(margin_end_point)
     }
 
     pub fn get_top_margin(&self, include_title_bar: bool) -> Result<i32> {
@@ -167,8 +197,8 @@ impl HorseGirlDetailImage {
         let mut binary_image = Mat::default();
         in_range(
             &hsv_image,
-            &Scalar::new(30.0, 210.0, 160.0, 255.0),
-            &Scalar::new(58.0, 255.0, 255.0, 255.0),
+            &Scalar::new(25.0, 160.0, 160.0, 255.0),
+            &Scalar::new(60.0, 255.0, 255.0, 255.0),
             &mut binary_image,
         )?;
 
@@ -206,6 +236,21 @@ impl HorseGirlDetailImage {
         let margin_end_point =
             (margin_end_points.iter().sum::<usize>() / margin_end_points.len()) as i32;
 
+        #[cfg(feature = "image_debug")]
+        {
+            let mut debug = self.image_mat.clone();
+            imgproc::line(
+                &mut debug,
+                Point::new(0, margin_end_point),
+                Point::new(self.width(), margin_end_point),
+                Scalar::new(0.0, 0.0, 255.0, 255.0),
+                2,
+                imgproc::LINE_8,
+                0,
+            )?;
+            SimpleImage(debug).write_to_file("debug-images", "top-margin-end-point.png")?;
+        }
+
         Ok(margin_end_point)
     }
 
@@ -223,10 +268,16 @@ impl HorseGirlDetailImage {
         let mut binary_image = Mat::default();
         in_range(
             &hsv_image,
-            &Scalar::new(0.0, 0.0, 249.0, 255.0),
-            &Scalar::new(0.0, 0.0, 249.5, 255.0),
+            &Scalar::new(0.0, 0.0, 245.0, 255.0),
+            &Scalar::new(0.0, 0.0, 255.0, 255.0),
             &mut binary_image,
         )?;
+
+        #[cfg(feature = "image_debug")]
+        {
+            let mut debug = binary_image.clone();
+            SimpleImage(debug).write_to_file("debug-images", "bottom-margin-binary.png")?;
+        }
 
         let factor_list_area_end_y = factor_list_area.y + factor_list_area.height;
         let binary_image = Mat::roi(
@@ -238,6 +289,12 @@ impl HorseGirlDetailImage {
                 binary_image.rows() - factor_list_area_end_y,
             ),
         )?;
+
+        #[cfg(feature = "image_debug")]
+        {
+            let mut debug = binary_image.clone();
+            SimpleImage(debug).write_to_file("debug-images", "bottom-margin-scan-roi.png")?;
+        }
 
         let mut margin_end_points: Vec<usize> = (0..binary_image.cols())
             .filter_map(|x| {
@@ -255,10 +312,25 @@ impl HorseGirlDetailImage {
         }
 
         margin_end_points.sort();
-        let margin_end_points = margin_end_points.split_at(margin_end_points.len() / 2).1;
+        let margin_end_points = margin_end_points.split_at(margin_end_points.len() / 2).0;
 
         let margin_end_point =
             (margin_end_points.iter().sum::<usize>() / margin_end_points.len()) as i32;
+
+        #[cfg(feature = "image_debug")]
+        {
+            let mut debug = self.image_mat.clone();
+            imgproc::line(
+                &mut debug,
+                Point::new(0, self.height() - margin_end_point),
+                Point::new(self.width(), self.height() - margin_end_point),
+                Scalar::new(0.0, 0.0, 255.0, 255.0),
+                2,
+                imgproc::LINE_8,
+                0,
+            )?;
+            SimpleImage(debug).write_to_file("debug-images", "bottom-margin-end-point.png")?;
+        }
 
         Ok(margin_end_point)
     }
@@ -390,7 +462,7 @@ impl HorseGirlFullDetailImage {
                     return Ok(());
                 }
                 let scale = (p as f64 / image_pixels_count as f64).sqrt();
-                
+
                 image.scale_image(scale)
             });
 
@@ -446,10 +518,43 @@ impl HorseGirlFullDetailImage {
     }
 
     fn get_list_area_rect(&self) -> Result<Rect> {
+        const DIFF_THRESHOLD_PIXELS_COUNT: i32 = 10;
+        const SCANNING_AREA_START_PARTITION_NUM: i32 = 8;
+        const SCANNING_AREA_END_PARTITION_NUM: i32 = 16;
+
         let first_image = &self.images[0];
         let second_image = &self.images[1];
 
+        let scanning_area_start_y = first_image.height() / SCANNING_AREA_START_PARTITION_NUM;
+        let scanning_area_end_y =
+            first_image.height() - (first_image.height() / SCANNING_AREA_END_PARTITION_NUM);
+
         let diff_threshold_image = first_image.diff_binary_mat(second_image)?;
+        #[cfg(feature = "image_debug")]
+        {
+            let mut debug = Mat::default();
+            imgproc::cvt_color(
+                &diff_threshold_image,
+                &mut debug,
+                imgproc::COLOR_GRAY2BGR,
+                first_image.image_mat.channels(),
+            )?;
+            
+            imgproc::rectangle(
+                &mut debug,
+                cvRect::new(
+                    0,
+                    scanning_area_start_y,
+                    first_image.width(),
+                    scanning_area_end_y - scanning_area_start_y,
+                ),
+                Scalar::new(0.0, 255.0, 0.0, 255.0),
+                2,
+                imgproc::LINE_8,
+                0,
+            )?;
+            SimpleImage(debug).write_to_file("debug-images", "list-area-diff.png")?;
+        }
 
         let mut diff_contours = VectorOfVectorOfPoint::new();
         imgproc::find_contours(
@@ -464,6 +569,16 @@ impl HorseGirlFullDetailImage {
 
         for contour in diff_contours.iter() {
             let rect = imgproc::bounding_rect(&contour)?;
+
+            if (rect.width * rect.height) < DIFF_THRESHOLD_PIXELS_COUNT {
+                continue;
+            }
+            if rect.y < scanning_area_start_y {
+                continue;
+            }
+            if rect.y > scanning_area_end_y {
+                continue;
+            }
 
             if all_diff_covered_rect.x == Default::default() {
                 all_diff_covered_rect.x = rect.x;

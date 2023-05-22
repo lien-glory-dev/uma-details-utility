@@ -1,3 +1,5 @@
+#[cfg(feature = "image_debug")]
+use opencv::core::Scalar;
 use opencv::core::{min_max_loc, Mat, MatTraitConst};
 use opencv::imgproc;
 
@@ -30,6 +32,7 @@ impl FactorListPartialImage {
 
         let cropped_image = Mat::roi(&src.image_mat, crop_area.into())?;
 
+        factor_list_area.width = (factor_list_area.width as f64 * 0.98) as i32;
         factor_list_area.y = 0;
         factor_list_area.height = cropped_image.rows();
 
@@ -62,15 +65,15 @@ impl FactorListPartialImage {
         Ok(merged_image)
     }
 
-    pub fn get_matching_roi(&self) -> Result<SimpleImage> {
+    pub fn get_list_area_roi(&self) -> Result<SimpleImage> {
         let roi = SimpleImage::new(Mat::roi(&self.image_mat, self.factor_list_area.into())?);
 
         Ok(roi)
     }
 
     fn detect_match_area(&self, other: &FactorListPartialImage) -> Result<MatchedPoint> {
-        let self_matching_roi = self.get_matching_roi()?;
-        let other_matching_roi = other.get_matching_roi()?;
+        let self_matching_roi = self.get_list_area_roi()?;
+        let other_matching_roi = other.get_list_area_roi()?;
 
         let partition_height = other_matching_roi.height() / HEIGHT_PARTITION_NUM;
 
@@ -104,6 +107,57 @@ impl FactorListPartialImage {
                 )?;
 
                 if max_val > MATCHING_THRESHOLD {
+                    #[cfg(feature = "image_debug")]
+                    {
+                        let mut debug = self.image_mat.clone();
+                        imgproc::rectangle(
+                            &mut debug,
+                            Rect::new(
+                                self.factor_list_area.x,
+                                self_scanning_pos,
+                                self.factor_list_area.width,
+                                partition_height,
+                            )
+                            .into(),
+                            Scalar::new(0.0, 0.0, 255.0, 255.0),
+                            2,
+                            imgproc::LINE_8,
+                            0,
+                        )?;
+                        SimpleImage(debug).write_to_file(
+                            "debug-images",
+                            format!(
+                                "self-scanning-{}.png",
+                                chrono::Local::now().timestamp_millis()
+                            )
+                            .as_str(),
+                        )?;
+
+                        let mut debug = other.image_mat.clone();
+                        imgproc::rectangle(
+                            &mut debug,
+                            Rect::new(
+                                other.factor_list_area.x,
+                                other_scanning_pos,
+                                other.factor_list_area.width,
+                                partition_height,
+                            )
+                            .into(),
+                            Scalar::new(0.0, 0.0, 255.0, 255.0),
+                            2,
+                            imgproc::LINE_8,
+                            0,
+                        )?;
+                        SimpleImage(debug).write_to_file(
+                            "debug-images",
+                            format!(
+                                "other-scanning-{}.png",
+                                chrono::Local::now().timestamp_millis()
+                            )
+                            .as_str(),
+                        )?;
+                    }
+
                     return Ok(MatchedPoint(self_scanning_pos, other_scanning_pos));
                 }
             }
