@@ -81,10 +81,64 @@ impl FactorListPartialImage {
             let other_scanning_pos = partition_num * partition_height;
             let other_scanning_roi = other_matching_roi
                 .vertical_crop_image(CropY(other_scanning_pos), CropHeight(partition_height))?;
+            
+            #[cfg(feature = "image_debug")]
+            {
+                let mut debug = other.image_mat.clone();
+                imgproc::rectangle(
+                    &mut debug,
+                    Rect::new(
+                        other.factor_list_area.x,
+                        other_scanning_pos,
+                        other.factor_list_area.width,
+                        partition_height,
+                    )
+                        .into(),
+                    Scalar::new(0.0, 0.0, 255.0, 255.0),
+                    2,
+                    imgproc::LINE_8,
+                    0,
+                )?;
+                SimpleImage(debug).write_to_file(
+                    "debug-images",
+                    format!(
+                        "other-scanning-{}.png",
+                        chrono::Local::now().timestamp_millis()
+                    )
+                        .as_str(),
+                )?;
+            }
 
             for self_scanning_pos in (0..(self_matching_roi.height() - partition_height)).rev() {
                 let self_scanning_roi = self_matching_roi
                     .vertical_crop_image(CropY(self_scanning_pos), CropHeight(partition_height))?;
+                
+                #[cfg(feature = "image_debug")]
+                {
+                    let mut debug = self.image_mat.clone();
+                    imgproc::rectangle(
+                        &mut debug,
+                        Rect::new(
+                            self.factor_list_area.x,
+                            self_scanning_pos,
+                            self.factor_list_area.width,
+                            partition_height,
+                        )
+                            .into(),
+                        Scalar::new(0.0, 0.0, 255.0, 255.0),
+                        2,
+                        imgproc::LINE_8,
+                        0,
+                    )?;
+                    SimpleImage(debug).write_to_file(
+                        "debug-images",
+                        format!(
+                            "self-scanning-{}.png",
+                            chrono::Local::now().timestamp_millis()
+                        )
+                            .as_str(),
+                    )?;
+                }
 
                 let mut match_result = Mat::default();
                 imgproc::match_template(
@@ -127,7 +181,7 @@ impl FactorListPartialImage {
                         SimpleImage(debug).write_to_file(
                             "debug-images",
                             format!(
-                                "self-scanning-{}.png",
+                                "self-matched-{}.png",
                                 chrono::Local::now().timestamp_millis()
                             )
                             .as_str(),
@@ -151,7 +205,7 @@ impl FactorListPartialImage {
                         SimpleImage(debug).write_to_file(
                             "debug-images",
                             format!(
-                                "other-scanning-{}.png",
+                                "other-matched-{}.png",
                                 chrono::Local::now().timestamp_millis()
                             )
                             .as_str(),
